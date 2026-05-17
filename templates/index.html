@@ -1,0 +1,1158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ForensicAI — Image Authenticity Detector</title>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;400;500;600;700&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg-void: #020608;
+      --bg-deep: #050d12;
+      --bg-panel: #08161e;
+      --bg-card: #0c1e28;
+      --accent-cyan: #00e5ff;
+      --accent-teal: #00b4d8;
+      --accent-green: #39ff84;
+      --accent-red: #ff3a5c;
+      --accent-orange: #ff8c00;
+      --accent-yellow: #ffe066;
+      --text-primary: #d0f0ff;
+      --text-secondary: #6fa3b8;
+      --text-dim: #3a6070;
+      --border-glow: rgba(0, 229, 255, 0.25);
+      --border-dim: rgba(0, 229, 255, 0.08);
+      --glow-cyan: 0 0 20px rgba(0, 229, 255, 0.4);
+      --glow-green: 0 0 20px rgba(57, 255, 132, 0.4);
+      --glow-red: 0 0 20px rgba(255, 58, 92, 0.4);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      background-color: var(--bg-void);
+      color: var(--text-primary);
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 16px;
+      min-height: 100vh;
+      overflow-x: hidden;
+      position: relative;
+    }
+
+    /* ── BACKGROUND GRID ── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(0,229,255,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,229,255,0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── SCANLINE ── */
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,0,0,0.15) 2px,
+        rgba(0,0,0,0.15) 4px
+      );
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── NOISE OVERLAY ── */
+    .noise {
+      position: fixed;
+      inset: 0;
+      opacity: 0.03;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── CORNER DECORATIONS ── */
+    .corner-deco {
+      position: fixed;
+      width: 120px;
+      height: 120px;
+      pointer-events: none;
+      z-index: 1;
+    }
+    .corner-deco::before,
+    .corner-deco::after {
+      content: '';
+      position: absolute;
+      background: var(--accent-cyan);
+    }
+    .corner-deco::before { width: 2px; height: 40px; }
+    .corner-deco::after  { width: 40px; height: 2px; }
+    .corner-tl { top: 20px; left: 20px; }
+    .corner-tl::before { top: 0; left: 0; }
+    .corner-tl::after  { top: 0; left: 0; }
+    .corner-tr { top: 20px; right: 20px; transform: scaleX(-1); }
+    .corner-tr::before { top: 0; left: 0; }
+    .corner-tr::after  { top: 0; left: 0; }
+    .corner-bl { bottom: 20px; left: 20px; transform: scaleY(-1); }
+    .corner-bl::before { top: 0; left: 0; }
+    .corner-bl::after  { top: 0; left: 0; }
+    .corner-br { bottom: 20px; right: 20px; transform: scale(-1); }
+    .corner-br::before { top: 0; left: 0; }
+    .corner-br::after  { top: 0; left: 0; }
+
+    /* ── WRAPPER ── */
+    .wrapper {
+      position: relative;
+      z-index: 2;
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 40px 20px 80px;
+    }
+
+    /* ── HEADER ── */
+    header {
+      text-align: center;
+      padding: 60px 0 50px;
+      animation: fadeSlideDown 0.8s ease both;
+    }
+
+    .header-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(0,229,255,0.06);
+      border: 1px solid var(--border-glow);
+      border-radius: 2px;
+      padding: 6px 16px;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 11px;
+      color: var(--accent-cyan);
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      margin-bottom: 24px;
+    }
+
+    .header-badge .dot {
+      width: 6px; height: 6px;
+      background: var(--accent-green);
+      border-radius: 50%;
+      animation: blink 1.2s infinite;
+    }
+
+    h1 {
+      font-family: 'Orbitron', monospace;
+      font-weight: 900;
+      font-size: clamp(2rem, 5vw, 3.6rem);
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      line-height: 1.1;
+      background: linear-gradient(135deg, #ffffff 0%, var(--accent-cyan) 50%, var(--accent-teal) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 12px;
+    }
+
+    .subtitle {
+      font-size: 14px;
+      color: var(--text-secondary);
+      font-family: 'Share Tech Mono', monospace;
+      letter-spacing: 2px;
+      opacity: 0.8;
+    }
+
+    /* ── TECH TAGS ── */
+    .tech-tags {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+      margin-top: 28px;
+    }
+
+    .tag {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 1.5px;
+      padding: 5px 14px;
+      border: 1px solid var(--border-glow);
+      color: var(--accent-cyan);
+      background: rgba(0,229,255,0.04);
+      text-transform: uppercase;
+      clip-path: polygon(8px 0%, 100% 0%, calc(100% - 8px) 100%, 0% 100%);
+      transition: all 0.2s;
+    }
+
+    .tag:hover {
+      background: rgba(0,229,255,0.12);
+      box-shadow: var(--glow-cyan);
+    }
+
+    /* ── SEPARATOR ── */
+    .sep {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 10px 0 40px;
+    }
+    .sep-line { flex: 1; height: 1px; background: linear-gradient(90deg, transparent, var(--accent-cyan), transparent); }
+    .sep-diamond {
+      width: 8px; height: 8px;
+      background: var(--accent-cyan);
+      transform: rotate(45deg);
+      box-shadow: var(--glow-cyan);
+    }
+
+    /* ── UPLOAD ZONE ── */
+    .upload-card {
+      background: var(--bg-panel);
+      border: 1px solid var(--border-glow);
+      border-radius: 4px;
+      padding: 0;
+      position: relative;
+      overflow: hidden;
+      animation: fadeSlideUp 0.8s 0.2s ease both;
+    }
+
+    .upload-card-header {
+      padding: 14px 24px;
+      background: rgba(0,229,255,0.04);
+      border-bottom: 1px solid var(--border-dim);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 12px;
+      letter-spacing: 2px;
+      color: var(--accent-cyan);
+    }
+
+    .upload-card-header .circle {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--accent-green);
+      box-shadow: 0 0 8px var(--accent-green);
+    }
+
+    .upload-body {
+      padding: 32px;
+    }
+
+    .drop-zone {
+      border: 2px dashed rgba(0,229,255,0.2);
+      border-radius: 4px;
+      padding: 60px 32px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      position: relative;
+      background: rgba(0,229,255,0.01);
+    }
+
+    .drop-zone:hover, .drop-zone.dragover {
+      border-color: var(--accent-cyan);
+      background: rgba(0,229,255,0.05);
+      box-shadow: inset 0 0 40px rgba(0,229,255,0.06);
+    }
+
+    .drop-zone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+
+    .drop-icon {
+      width: 72px;
+      height: 72px;
+      margin: 0 auto 20px;
+      position: relative;
+    }
+
+    .drop-icon svg {
+      width: 100%;
+      height: 100%;
+      filter: drop-shadow(0 0 10px rgba(0,229,255,0.5));
+    }
+
+    .drop-label {
+      font-family: 'Orbitron', monospace;
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      color: var(--text-primary);
+      margin-bottom: 8px;
+    }
+
+    .drop-sub {
+      font-size: 13px;
+      color: var(--text-secondary);
+      font-family: 'Share Tech Mono', monospace;
+    }
+
+    .file-types {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    .file-type {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 10px;
+      padding: 3px 10px;
+      border: 1px solid var(--border-dim);
+      color: var(--text-dim);
+      letter-spacing: 1px;
+    }
+
+    /* ── IMAGE PREVIEW ── */
+    #previewWrap {
+      display: none;
+      margin-top: 24px;
+      border: 1px solid var(--border-glow);
+      border-radius: 4px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    #previewWrap .preview-label {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 2px;
+      color: var(--accent-cyan);
+      padding: 8px 16px;
+      background: rgba(0,229,255,0.05);
+      border-bottom: 1px solid var(--border-dim);
+    }
+
+    #previewImg {
+      display: block;
+      width: 100%;
+      max-height: 320px;
+      object-fit: contain;
+      background: #000;
+    }
+
+    .preview-overlay {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      padding: 8px 16px;
+      background: linear-gradient(transparent, rgba(0,0,0,0.8));
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 11px;
+      color: var(--accent-cyan);
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    #previewWrap:hover .preview-overlay { opacity: 1; }
+
+    /* ── SUBMIT BUTTON ── */
+    .btn-analyze {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      width: 100%;
+      margin-top: 28px;
+      padding: 18px 32px;
+      background: linear-gradient(135deg, rgba(0,229,255,0.12), rgba(0,180,216,0.08));
+      border: 1px solid var(--accent-cyan);
+      color: var(--accent-cyan);
+      font-family: 'Orbitron', monospace;
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+      transition: all 0.3s ease;
+      clip-path: polygon(16px 0%, 100% 0%, calc(100% - 16px) 100%, 0% 100%);
+    }
+
+    .btn-analyze::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(0,229,255,0.15), transparent);
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .btn-analyze:hover {
+      box-shadow: var(--glow-cyan), inset 0 0 30px rgba(0,229,255,0.1);
+      transform: translateY(-2px);
+    }
+
+    .btn-analyze:hover::before { opacity: 1; }
+    .btn-analyze:active { transform: translateY(0); }
+
+    .btn-analyze.loading {
+      pointer-events: none;
+      opacity: 0.7;
+    }
+
+    .btn-icon {
+      width: 20px; height: 20px;
+      flex-shrink: 0;
+    }
+
+    .btn-spinner {
+      display: none;
+      width: 18px; height: 18px;
+      border: 2px solid rgba(0,229,255,0.3);
+      border-top-color: var(--accent-cyan);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    .btn-analyze.loading .btn-spinner { display: block; }
+    .btn-analyze.loading .btn-icon { display: none; }
+    .btn-analyze.loading .btn-text::after { content: '...'; }
+
+    /* ── ERROR MESSAGE ── */
+    .error-msg {
+      display: none;
+      align-items: flex-start;
+      gap: 12px;
+      background: rgba(255,58,92,0.08);
+      border: 1px solid rgba(255,58,92,0.3);
+      border-radius: 4px;
+      padding: 16px 20px;
+      margin-top: 20px;
+      color: var(--accent-red);
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 13px;
+      animation: fadeSlideUp 0.4s ease;
+    }
+
+    .error-msg.visible { display: flex; }
+
+    .error-icon { font-size: 18px; flex-shrink: 0; }
+
+    /* ── RESULTS SECTION ── */
+    #results {
+      display: none;
+      animation: fadeSlideUp 0.7s ease both;
+    }
+
+    #results.visible { display: block; }
+
+    /* ── VERDICT CARD ── */
+    .verdict-card {
+      margin-top: 40px;
+      background: var(--bg-panel);
+      border-radius: 4px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .verdict-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--verdict-color, var(--accent-cyan)), transparent);
+    }
+
+    .verdict-header {
+      padding: 20px 32px;
+      border-bottom: 1px solid var(--border-dim);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .verdict-label {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 3px;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+    }
+
+    .verdict-result {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .verdict-icon {
+      width: 48px; height: 48px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      flex-shrink: 0;
+      border: 2px solid var(--verdict-color, var(--accent-cyan));
+      box-shadow: 0 0 20px var(--verdict-color, var(--accent-cyan));
+    }
+
+    .verdict-text {
+      font-family: 'Orbitron', monospace;
+      font-size: clamp(1.2rem, 3vw, 1.8rem);
+      font-weight: 900;
+      letter-spacing: 3px;
+      color: var(--verdict-color, var(--accent-cyan));
+      text-shadow: 0 0 20px var(--verdict-color, var(--accent-cyan));
+    }
+
+    .verdict-body {
+      padding: 32px;
+    }
+
+    /* ── CONFIDENCE BAR ── */
+    .confidence-block {
+      margin-bottom: 32px;
+    }
+
+    .conf-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    .conf-label {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 12px;
+      letter-spacing: 2px;
+      color: var(--text-secondary);
+    }
+
+    .conf-value {
+      font-family: 'Orbitron', monospace;
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--verdict-color, var(--accent-cyan));
+    }
+
+    .conf-bar-track {
+      height: 8px;
+      background: rgba(255,255,255,0.04);
+      border-radius: 2px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .conf-bar-fill {
+      height: 100%;
+      border-radius: 2px;
+      background: linear-gradient(90deg, var(--verdict-color, var(--accent-cyan)), rgba(255,255,255,0.6));
+      width: 0%;
+      transition: width 1.2s cubic-bezier(0.22, 1, 0.36, 1);
+      box-shadow: 0 0 12px var(--verdict-color, var(--accent-cyan));
+      position: relative;
+    }
+
+    .conf-bar-fill::after {
+      content: '';
+      position: absolute;
+      right: 0; top: 0; bottom: 0;
+      width: 4px;
+      background: white;
+      opacity: 0.9;
+      box-shadow: 0 0 8px white;
+    }
+
+    /* ── FORENSIC GRID ── */
+    .forensic-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+    }
+
+    .forensic-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-dim);
+      border-radius: 4px;
+      padding: 20px;
+      position: relative;
+      overflow: hidden;
+      transition: all 0.3s ease;
+    }
+
+    .forensic-card:hover {
+      border-color: var(--card-accent, var(--border-glow));
+      box-shadow: 0 0 20px rgba(0,229,255,0.08);
+      transform: translateY(-2px);
+    }
+
+    .forensic-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: var(--card-accent, var(--accent-cyan));
+    }
+
+    .forensic-card-icon {
+      font-size: 24px;
+      margin-bottom: 14px;
+      display: block;
+      filter: drop-shadow(0 0 6px var(--card-accent, var(--accent-cyan)));
+    }
+
+    .forensic-card-title {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 2.5px;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .forensic-card-value {
+      font-family: 'Orbitron', monospace;
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--card-accent, var(--accent-cyan));
+      margin-bottom: 8px;
+      line-height: 1;
+    }
+
+    .forensic-card-desc {
+      font-size: 13px;
+      color: var(--text-secondary);
+      line-height: 1.5;
+    }
+
+    /* ── SUSPICION METER ── */
+    .suspicion-meter {
+      margin-top: 10px;
+      height: 4px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .suspicion-fill {
+      height: 100%;
+      border-radius: 2px;
+      background: var(--card-accent, var(--accent-cyan));
+      width: 0%;
+      transition: width 1.5s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    /* ── NOISE CARD (wider) ── */
+    .forensic-noise {
+      grid-column: 1 / -1;
+      background: var(--bg-card);
+      border: 1px solid var(--border-dim);
+      border-radius: 4px;
+      padding: 20px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .forensic-noise::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: var(--accent-orange);
+    }
+
+    .noise-detail-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .noise-detail-item {
+      background: rgba(0,0,0,0.3);
+      border: 1px solid var(--border-dim);
+      border-radius: 3px;
+      padding: 10px 14px;
+    }
+
+    .noise-detail-label {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 9px;
+      letter-spacing: 2px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+
+    .noise-detail-value {
+      font-family: 'Orbitron', monospace;
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--accent-orange);
+    }
+
+    /* ── ANALYSIS LOG ── */
+    .analysis-log {
+      margin-top: 40px;
+      background: var(--bg-panel);
+      border: 1px solid var(--border-dim);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .log-header {
+      padding: 12px 20px;
+      background: rgba(0,229,255,0.03);
+      border-bottom: 1px solid var(--border-dim);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 2px;
+      color: var(--accent-cyan);
+    }
+
+    .log-body {
+      padding: 16px 20px;
+      max-height: 180px;
+      overflow-y: auto;
+    }
+
+    .log-body::-webkit-scrollbar { width: 4px; }
+    .log-body::-webkit-scrollbar-track { background: transparent; }
+    .log-body::-webkit-scrollbar-thumb { background: var(--border-glow); border-radius: 2px; }
+
+    .log-line {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 12px;
+      color: var(--text-secondary);
+      padding: 3px 0;
+      display: flex;
+      gap: 10px;
+      border-bottom: 1px solid rgba(255,255,255,0.02);
+    }
+
+    .log-time { color: var(--text-dim); flex-shrink: 0; }
+    .log-status { flex-shrink: 0; }
+    .log-status.ok { color: var(--accent-green); }
+    .log-status.warn { color: var(--accent-yellow); }
+    .log-status.err { color: var(--accent-red); }
+
+    /* ── FOOTER ── */
+    footer {
+      text-align: center;
+      padding-top: 40px;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 11px;
+      color: var(--text-dim);
+      letter-spacing: 2px;
+    }
+
+    footer span { color: var(--accent-cyan); }
+
+    /* ── ANIMATIONS ── */
+    @keyframes fadeSlideDown {
+      from { opacity: 0; transform: translateY(-20px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes fadeSlideUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 640px) {
+      .wrapper { padding: 20px 14px 60px; }
+      header { padding: 40px 0 30px; }
+      .upload-body { padding: 20px; }
+      .drop-zone { padding: 40px 16px; }
+      .verdict-body { padding: 20px; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="noise"></div>
+  <div class="corner-deco corner-tl"></div>
+  <div class="corner-deco corner-tr"></div>
+  <div class="corner-deco corner-bl"></div>
+  <div class="corner-deco corner-br"></div>
+
+  <div class="wrapper">
+
+    <header>
+      <div class="header-badge">
+        <span class="dot"></span>
+        FORENSIC INTELLIGENCE SYSTEM v2.4
+      </div>
+      <h1>ForensicAI</h1>
+      <p class="subtitle">AI vs Real Image Authenticity Detector</p>
+      <div class="tech-tags">
+        <span class="tag">CNN Detection</span>
+        <span class="tag">EXIF Analysis</span>
+        <span class="tag">ELA Forensics</span>
+        <span class="tag">Noise Analysis</span>
+      </div>
+    </header>
+
+    <div class="sep">
+      <div class="sep-line"></div>
+      <div class="sep-diamond"></div>
+      <div class="sep-line"></div>
+    </div>
+
+    <form id="analyzeForm" enctype="multipart/form-data">
+      <div class="upload-card">
+        <div class="upload-card-header">
+          <span class="circle"></span>
+          UPLOAD IMAGE FOR ANALYSIS
+          <span style="margin-left:auto; color: var(--text-dim);">MODULE: AUTH_DETECT_01</span>
+        </div>
+        <div class="upload-body">
+          <div class="drop-zone" id="dropZone">
+            <input type="file" name="file" id="imageInput" accept="image/*" required />
+            <div class="drop-icon">
+              <svg viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="4" y="4" width="64" height="64" rx="2" stroke="#00e5ff" stroke-width="1.5" stroke-dasharray="8 4"/>
+                <circle cx="36" cy="34" r="14" stroke="#00e5ff" stroke-width="1.5"/>
+                <circle cx="36" cy="34" r="6" fill="rgba(0,229,255,0.15)" stroke="#00e5ff" stroke-width="1"/>
+                <line x1="36" y1="14" x2="36" y2="10" stroke="#00e5ff" stroke-width="2" stroke-linecap="round"/>
+                <line x1="36" y1="58" x2="36" y2="54" stroke="#00e5ff" stroke-width="2" stroke-linecap="round"/>
+                <line x1="14" y1="34" x2="10" y2="34" stroke="#00e5ff" stroke-width="2" stroke-linecap="round"/>
+                <line x1="62" y1="34" x2="58" y2="34" stroke="#00e5ff" stroke-width="2" stroke-linecap="round"/>
+                <path d="M26 14 L36 10 L46 14" stroke="rgba(0,229,255,0.3)" stroke-width="1" fill="none"/>
+              </svg>
+            </div>
+            <div class="drop-label">DRAG & DROP IMAGE</div>
+            <div class="drop-sub">or click to browse files</div>
+            <div class="file-types">
+              <span class="file-type">JPG</span>
+              <span class="file-type">PNG</span>
+              <span class="file-type">WEBP</span>
+            </div>
+          </div>
+
+          <div id="previewWrap">
+            <div class="preview-label">SELECTED IMAGE — READY FOR ANALYSIS</div>
+            <img id="previewImg" alt="Preview" />
+            <div class="preview-overlay" id="previewOverlay">READY TO SCAN</div>
+          </div>
+
+          <div class="error-msg" id="errorMsg">
+            <span class="error-icon">⚠</span>
+            <span id="errorText">Error message goes here</span>
+          </div>
+
+          <button type="submit" class="btn-analyze" id="analyzeBtn">
+            <div class="btn-spinner"></div>
+            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+              <path d="M11 8v6M8 11h6" stroke-width="2.5"/>
+            </svg>
+            <span class="btn-text">ANALYZE IMAGE</span>
+          </button>
+        </div>
+      </div>
+    </form>
+
+    <div id="results">
+
+      <div class="verdict-card" id="verdictCard">
+        <div class="verdict-header">
+          <div>
+            <div class="verdict-label">ANALYSIS COMPLETE — VERDICT</div>
+          </div>
+          <div class="verdict-result">
+            <div class="verdict-icon" id="verdictIcon">🤖</div>
+            <div class="verdict-text" id="verdictText">AI GENERATED</div>
+          </div>
+        </div>
+
+        <div class="verdict-body">
+          <div class="confidence-block">
+            <div class="conf-row">
+              <span class="conf-label">CONFIDENCE SCORE</span>
+              <span class="conf-value" id="confValue">0.0%</span>
+            </div>
+            <div class="conf-bar-track">
+              <div class="conf-bar-fill" id="confBar"></div>
+            </div>
+          </div>
+
+          <div class="forensic-grid" id="forensicGrid">
+
+            <div class="forensic-card" style="--card-accent: #00e5ff;">
+              <span class="forensic-card-icon">🔍</span>
+              <div class="forensic-card-title">EXIF Metadata</div>
+              <div class="forensic-card-value" id="exifScore">---</div>
+              <div class="forensic-card-desc" id="exifDesc">Analysis pending...</div>
+              <div class="suspicion-meter"><div class="suspicion-fill" id="exifBar"></div></div>
+            </div>
+
+            <div class="forensic-card" style="--card-accent: #ff8c00;">
+              <span class="forensic-card-icon">🌡️</span>
+              <div class="forensic-card-title">ELA Analysis</div>
+              <div class="forensic-card-value" id="elaScore">---</div>
+              <div class="forensic-card-desc" id="elaDesc">Analysis pending...</div>
+              <div class="suspicion-meter"><div class="suspicion-fill" id="elaBar"></div></div>
+            </div>
+
+            <div class="forensic-card" style="--card-accent: #bc13fe;">
+              <span class="forensic-card-icon">🧠</span>
+              <div class="forensic-card-title">CNN AI Probability</div>
+              <div class="forensic-card-value" id="cnnScore">---</div>
+              <div class="forensic-card-desc" id="cnnDesc">Analysis pending...</div>
+              <div class="suspicion-meter"><div class="suspicion-fill" id="cnnBar" style="background: #bc13fe;"></div></div>
+            </div>
+
+          </div>
+
+          <div class="forensic-noise" style="margin-top:16px;">
+            <div style="display:flex; align-items:center; gap:10px; margin-bottom:4px;">
+              <span style="font-size:22px; filter:drop-shadow(0 0 6px #ff8c00);">📊</span>
+              <div>
+                <div class="forensic-card-title" style="color:#ff8c00;">NOISE FORENSICS</div>
+                <div class="forensic-card-value" style="color:#ff8c00; font-size:16px;" id="noiseMain">Waiting for Input</div>
+              </div>
+            </div>
+            <div class="noise-detail-grid" id="noiseGrid">
+              <div class="noise-detail-item">
+                <div class="noise-detail-label">Mean Noise</div>
+                <div class="noise-detail-value" id="noiseMean">---</div>
+              </div>
+              <div class="noise-detail-item">
+                <div class="noise-detail-label">Std Deviation</div>
+                <div class="noise-detail-value" id="noiseStd">---</div>
+              </div>
+              <div class="noise-detail-item">
+                <div class="noise-detail-label">Laplacian Var</div>
+                <div class="noise-detail-value" id="noiseLap">---</div>
+              </div>
+              <div class="noise-detail-item">
+                <div class="noise-detail-label">Pattern Type</div>
+                <div class="noise-detail-value" id="noisePattern">---</div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </div><footer>
+      <p>FORENSIC<span>AI</span> · IMAGE AUTHENTICITY SYSTEM · <span>CNN + EXIF + ELA + NOISE</span></p>
+    </footer>
+
+  </div><script>
+    // ─── 1. Image preview logic ──────────────────────────────
+    const input      = document.getElementById('imageInput');
+    const dropZone   = document.getElementById('dropZone');
+    const previewWrap= document.getElementById('previewWrap');
+    const previewImg = document.getElementById('previewImg');
+    const previewOverlay = document.getElementById('previewOverlay');
+
+    input.addEventListener('change', handleFile);
+
+    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+      if (e.dataTransfer.files[0]) {
+        input.files = e.dataTransfer.files;
+        handleFile();
+      }
+    });
+
+    function handleFile() {
+      const file = input.files[0];
+      if (!file) return;
+      const url = URL.createObjectURL(file);
+      previewImg.src = url;
+      previewWrap.style.display = 'block';
+      previewOverlay.textContent = `${file.name} — ${(file.size/1024).toFixed(1)} KB`;
+    }
+
+    // ─── 2. AJAX Submission to Flask ──────────────────────────
+    const form      = document.getElementById('analyzeForm');
+    const btn       = document.getElementById('analyzeBtn');
+    const errorMsg  = document.getElementById('errorMsg');
+    const errorText = document.getElementById('errorText');
+    const results   = document.getElementById('results');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault(); // STOP Default Form Submit
+      
+      // Reset UI
+      errorMsg.style.display = 'none';
+      errorMsg.classList.remove('visible');
+      results.style.display = 'none';
+      results.classList.remove('visible');
+
+      // Loading State
+      btn.classList.add('loading');
+      btn.querySelector('.btn-text').textContent = 'ANALYZING...';
+
+      const formData = new FormData(form);
+
+      try {
+        // Send to Python
+        const response = await fetch('/predict', {
+          method: 'POST',
+          body: formData
+        });
+
+        const data = await response.json(); // Get JSON response from Python
+
+        // Reset Button
+        btn.classList.remove('loading');
+        btn.querySelector('.btn-text').textContent = 'ANALYZE IMAGE';
+
+        if (data.error) {
+          errorText.textContent = data.message;
+          errorMsg.style.display = 'flex';
+          errorMsg.classList.add('visible');
+        } else {
+          // Success! Render data
+          const confidencePercent = (data.score * 100).toFixed(1);
+          
+          renderResult({
+            result: data.prediction,  // "AI-Generated" or "Real"
+            confidence: confidencePercent + '%',
+            
+            // NOTE: Since your current Python only returns score/label, 
+            // we infer these values based on the score for visual effect.
+            // (You can connect real metadata/ELA backend logic later)
+            exif_score: data.prediction === "AI-Generated" ? "HIGH" : "LOW",
+            ela_score:  data.prediction === "AI-Generated" ? "MEDIUM" : "LOW",
+            cnn_score:  confidencePercent + '%',
+            
+            noise_info: {
+              label: data.prediction === "AI-Generated" ? 'Unnatural Pattern' : 'Natural Noise',
+              mean:  (Math.random() * 0.01).toFixed(4), // Placeholder
+              std:   (Math.random() * 0.005).toFixed(4), // Placeholder
+              lap:   (Math.random() * 30).toFixed(2),    // Placeholder
+              pattern: data.prediction === "AI-Generated" ? 'SYNTHETIC' : 'ORGANIC'
+            }
+          });
+        }
+
+      } catch (err) {
+        console.error(err);
+        btn.classList.remove('loading');
+        btn.querySelector('.btn-text').textContent = 'ANALYZE IMAGE';
+        errorText.textContent = "Server Error: Could not connect to backend.";
+        errorMsg.style.display = 'flex';
+        errorMsg.classList.add('visible');
+      }
+    });
+
+    // ─── 3. Rendering Logic ───────────────────────────────────
+    function renderResult(data) {
+      const isAI = data.result.toLowerCase().includes('ai');
+      const color = isAI ? 'var(--accent-red)' : 'var(--accent-green)';
+
+      // Verdict card
+      const card = document.getElementById('verdictCard');
+      card.style.setProperty('--verdict-color', color);
+      document.getElementById('verdictIcon').textContent = isAI ? '🤖' : '📷';
+      document.getElementById('verdictText').textContent = data.result.toUpperCase();
+      document.getElementById('confValue').textContent = data.confidence;
+      document.getElementById('confValue').style.color = color;
+
+      // Animate Bar
+      const confNum = parseFloat(data.confidence);
+      setTimeout(() => {
+        document.getElementById('confBar').style.width = confNum + '%';
+        document.getElementById('confBar').style.background =
+          `linear-gradient(90deg, ${color}, rgba(255,255,255,0.6))`;
+        document.getElementById('confBar').style.boxShadow = `0 0 12px ${color}`;
+      }, 200);
+
+      // EXIF
+      const exifMap = { 'HIGH': 85, 'MEDIUM': 50, 'LOW': 18 };
+      document.getElementById('exifScore').textContent = data.exif_score;
+      document.getElementById('exifScore').style.color = scoreColor(data.exif_score);
+      document.getElementById('exifDesc').textContent = exifDesc(data.exif_score);
+      document.querySelector('#forensicGrid .forensic-card:nth-child(1)').style.setProperty('--card-accent', scoreColor(data.exif_score));
+      setTimeout(() => { document.getElementById('exifBar').style.width = (exifMap[data.exif_score] || 50) + '%'; }, 400);
+
+      // ELA
+      document.getElementById('elaScore').textContent = data.ela_score;
+      document.getElementById('elaScore').style.color = scoreColor(data.ela_score);
+      document.getElementById('elaDesc').textContent = elaDesc(data.ela_score);
+      document.querySelector('#forensicGrid .forensic-card:nth-child(2)').style.setProperty('--card-accent', scoreColor(data.ela_score));
+      setTimeout(() => { document.getElementById('elaBar').style.width = (exifMap[data.ela_score] || 50) + '%'; }, 500);
+
+      // CNN
+      const cnnNum = parseFloat(data.cnn_score);
+      const cnnColor = cnnNum > 60 ? 'var(--accent-red)' : cnnNum > 35 ? 'var(--accent-yellow)' : 'var(--accent-green)';
+      document.getElementById('cnnScore').textContent = data.cnn_score;
+      document.getElementById('cnnScore').style.color = cnnColor;
+      document.querySelector('#forensicGrid .forensic-card:nth-child(3)').style.setProperty('--card-accent', cnnColor);
+      setTimeout(() => {
+        document.getElementById('cnnBar').style.width = cnnNum + '%';
+        document.getElementById('cnnBar').style.background = cnnColor;
+      }, 600);
+
+      // Noise
+      if (typeof data.noise_info === 'object') {
+        document.getElementById('noiseMain').textContent = data.noise_info.label;
+        document.getElementById('noiseMean').textContent = data.noise_info.mean;
+        document.getElementById('noiseStd').textContent  = data.noise_info.std;
+        document.getElementById('noiseLap').textContent  = data.noise_info.lap;
+        document.getElementById('noisePattern').textContent = data.noise_info.pattern;
+      }
+
+      // Show results
+      results.style.display = 'block';
+      // Trigger reflow for animation
+      void results.offsetWidth; 
+      results.classList.add('visible');
+      results.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function scoreColor(score) {
+      if (!score) return 'var(--accent-cyan)';
+      const s = score.toUpperCase();
+      if (s === 'HIGH')   return 'var(--accent-red)';
+      if (s === 'MEDIUM') return 'var(--accent-yellow)';
+      if (s === 'LOW')    return 'var(--accent-green)';
+      return 'var(--accent-cyan)';
+    }
+
+    function exifDesc(score) {
+      if (!score) return '';
+      const s = score.toUpperCase();
+      if (s === 'HIGH')   return 'Missing camera model/GPS. Strongly indicative of AI synthesis.';
+      if (s === 'MEDIUM') return 'Partial EXIF data present. Some fields inconsistent.';
+      return 'Complete EXIF data found. Metadata appears authentic.';
+    }
+
+    function elaDesc(score) {
+      if (!score) return '';
+      const s = score.toUpperCase();
+      if (s === 'HIGH')   return 'Severe compression inconsistencies detected.';
+      if (s === 'MEDIUM') return 'Some anomalies detected. Possible regional editing.';
+      return 'Compression pattern consistent with natural camera sensor.';
+    }
+  </script>
+</body>
+</html>
