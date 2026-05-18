@@ -1,0 +1,50 @@
+# -----------------------------------------------
+# FORENSICAI — .gitignore
+# Delete this comment block before uploading
+# -----------------------------------------------
+
+# Virtual environment — NEVER push this
+venv/
+env/
+.venv/
+ENV/
+
+# Python cache files — auto-generated junk
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Large dataset — too big for GitHub (use Google Drive instead)
+dataset/
+data/
+datasets/
+*.csv
+*.zip
+
+# User uploads folder — runtime temp files
+static/uploads/
+
+# Model training logs
+logs/
+runs/
+
+# OS system files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE / editor settings
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Secret keys — NEVER share these on GitHub
+.env
+*.env
+secrets.py
+config_secret.py
+
+# Jupyter notebook checkpoints
+.ipynb_checkpoints/
