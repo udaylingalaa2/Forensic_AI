@@ -1,0 +1,50 @@
+# -----------------------------------------------
+# FORENSICAI — .gitignore
+# -----------------------------------------------
+
+# Virtual environment
+venv/
+env/
+.venv/
+ENV/
+
+# Python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Large dataset and model artifacts
+dataset/
+data/
+datasets/
+model/
+*.csv
+*.zip
+
+# User uploads folder
+static/uploads/
+
+# Logs and local output
+logs/
+runs/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE settings
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Secrets
+.env
+*.env
+secrets.py
+config_secret.py
+
+# Jupyter
+.ipynb_checkpoints/
